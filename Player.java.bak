@@ -1,0 +1,382 @@
+import java.util.*;
+
+class Node {
+    BoardState state;
+    Node[] children;
+    Node parent;
+    double visits = 0;
+    double wins = 0;
+    int depth = 0;
+
+    // Node is terminal if there are no more legal moves to take.
+    static boolean isTerminal(Node node) {
+        return node.state.numLegalMoves == 0;
+    }
+
+    // Node is leaf node if any child has not been expanded yet.
+    static boolean isLeafNode(Node node) {
+        return node.children[0] == null;
+    }
+
+    Node(BoardState state, Node parent) {
+        this.state = state;
+        this.parent = parent;
+        this.children = new Node[this.state.numLegalMoves];
+        if (parent != null) {
+            this.depth = parent.depth + 1;
+        }
+    }
+
+    // Select recursively selects a leaf node (following the UCB score-based policy)
+    // to expand and run a playout on next.
+    static void select(Node node) {
+        // Check if terminal. If terminal, parent has won (this node has no valid
+        // moves).
+        if (isTerminal(node)) {
+            System.err.println("Isterminal = true");
+            node.visits++;
+            Node.backpropagate(node, 1, 1); // Why is wins = 1 here?
+            return;
+        }
+
+        // Check if there are no children to select from; if this is not a terminal
+        // node, it means this node has not been expanded yet.
+        if (isLeafNode(node)) {
+            expand(node);
+            return;
+        }
+
+        // Otherwise, select a node among the children to do this again next.
+        Node selnode = node.children[0];
+        double selscore = utility(selnode);
+        for (int i = 1; i < node.children.length; i++) {
+            double childscore = utility(node.children[i]);
+            if (childscore > selscore) {
+                selscore = childscore;
+                selnode = node.children[i];
+            }
+        }
+
+        select(selnode);
+    }
+
+    // Expands a given node (provided it is not a terminal node - caller should care
+    // about this)
+    static void expand(Node node) {
+        // For every legal move, generate a child node, and run a playout from that
+        // child node. The child node does not get populated with scores (WHY?).
+        System.err.println("expand");
+        for (int i = 0; i < node.state.numLegalMoves; i++) {
+            BoardState newState = new BoardState(node.state);
+            Player.PerformMove(newState, i);
+
+            Node childnode = new Node(newState, node);
+            int score = Player.RunPlayoutOnState(newState, 50, 3);
+
+            if (score == 1) {
+                childnode.wins += 1.0;
+            } else if (score == 0) {
+                childnode.wins += 0.5;
+            } else {
+                childnode.wins += 0;
+            }
+
+            System.err.println("Score for node: " + score);
+
+            childnode.visits++;
+            node.children[i] = childnode;
+            backpropagate(childnode);
+        }
+    }
+
+    static void backpropagate(Node node, double wins, double games) {
+        if (node == null)
+            return;
+
+        node.wins += wins;
+        node.visits += games;
+        Node.backpropagate(node.parent, games - wins, games);
+        // while (node != null) {
+        //     node.wins += wins;
+        //     node.visits += games;
+
+        //     // Change the wins.
+        //     wins = games - wins;
+        //     node = (node.parent);
+        // }
+    }
+
+    static void backpropagate(Node node) {
+        System.err.printf("Backpropagating %f/%f to root parent from depth=%d.\n", node.wins, node.visits, node.depth);
+        backpropagate(node.parent, node.visits - node.wins, node.visits);
+    }
+
+    static double utility(Node node) {
+        if (node.visits == 0) {
+            System.err.println("Empty utility.");
+            return 100;
+        }
+
+        double nodewins = node.wins;
+        double nodevisits = node.visits;
+
+        return (((double) (nodevisits - nodewins)) / nodevisits)
+                + 1.4 * Math.sqrt(Math.log((double) node.parent.visits) / (double) nodevisits);
+    }
+}
+
+class MCTSThread extends Thread {
+    BoardState state;
+    boolean stop;
+    int selectedBestmoveIndex;
+
+    double nodescoreForParent(Node node) {
+        if (node.visits == 0) {
+            return (Double.MAX_VALUE);
+        }
+        double nodescore = (double) (node.visits - node.wins) / (double) (node.visits);
+        System.err.printf("Nodescore is %f\n", nodescore);
+        return nodescore;
+    }
+
+    MCTSThread(BoardState state) {
+        this.state = state;
+        this.stop = false;
+    }
+
+    public void run() {
+        Node rootNode = new Node(this.state, null);
+        while (!this.stop) {
+            Node.select(rootNode);
+            System.err.printf("Root node stats: %f/%f\n", rootNode.wins, rootNode.visits);
+        }
+        // ---- todo: disable.
+        Stack<Node> nodestack = new Stack<>();
+        nodestack.push(rootNode);
+        while (!nodestack.isEmpty()) {
+            Node popped_node = nodestack.pop();
+            if (popped_node == null)
+                continue;
+
+            for (int i = 0; i < popped_node.depth; i++)
+                System.err.print("  ");
+            System.err.printf("sNode = (%f/%f)\n", popped_node.wins, popped_node.visits);
+            // Push all children to stack.
+            for (Node child : popped_node.children) {
+                nodestack.push(child);
+            }
+        }
+        // ---- end of disable.
+
+        // Check the score of each branch; and see what move to take next.
+        // WARN: I should not take the utility here - we are no longer
+        // exploring/exploiting.
+
+        double bestUtility = this.nodescoreForParent(rootNode.children[0]);
+        int bestMoveIndex = 0;
+        for (int i = 1; i < this.state.numLegalMoves; i++) {
+            double nodeUtility = this.nodescoreForParent(rootNode.children[i]);
+            if (nodeUtility > bestUtility) {
+                bestUtility = nodeUtility;
+                bestMoveIndex = i;
+            }
+        }
+        Node selnode = rootNode.children[bestMoveIndex];
+        System.err.printf("Taking node with (%f/%f) playout chance.\n", selnode.wins, selnode.visits);
+        System.err.println("---moved---");
+        this.selectedBestmoveIndex = bestMoveIndex;
+    }
+}
+
+public class Player {
+
+    static Random random = new Random();
+
+    static double min(BoardState state, int depth, double alpha, double beta) {
+        // if (stop)
+        // return 0;
+        if (depth <= 0) {
+            double temp = -evalBoard(state);
+            return temp;
+        }
+        for (int i = 0; i < state.numLegalMoves; i++) {
+            // if (stop)
+            // return 0;
+            BoardState nextState = new BoardState(state);
+            PerformMove(nextState, i);
+            double max_value = max(nextState, depth - 1, alpha, beta);
+            if (max_value < beta) {
+                beta = max_value;
+                if (alpha >= beta)
+                    return alpha;
+            }
+        }
+        return beta;
+    }
+
+    static double max(BoardState state, int depth, double alpha, double beta) {
+        // if (stop)
+        // return 0;
+        if (depth == 0) {
+            double temp = evalBoard(state);
+            return temp;
+        }
+        for (int i = 0; i < state.numLegalMoves; i++) {
+            // if (stop)
+            // return 0;
+            BoardState nextState = new BoardState(state);
+            PerformMove(nextState, i);
+            double min_value = min(nextState, depth - 1, alpha, beta);
+            if (min_value > alpha) {
+                alpha = min_value;
+                if (beta <= alpha)
+                    return beta;
+            }
+        }
+        return alpha;
+    }
+
+    static void setupBoardState(BoardState state, int player, char[][] board) {
+        /* Set up the current state */
+        state.player = player;
+        PlayerHelper.memcpy(state.board, board);
+
+        /* Find the legal moves for the current state */
+        PlayerHelper.FindLegalMoves(state);
+    }
+
+    static void PerformMove(BoardState state, int moveIndex) {
+        PlayerHelper.PerformMove(state.board, state.movelist[moveIndex],
+                PlayerHelper.MoveLength(state.movelist[moveIndex]));
+        state.player = state.player % 2 + 1;
+        PlayerHelper.FindLegalMoves(state);
+    }
+
+    /* Employ your favorite search to find the best move. This code is an example */
+    /* of an alpha/beta search, except I have not provided the MinVal,MaxVal,EVAL */
+    /*
+     * functions. This example code shows you how to call the FindLegalMoves
+     * function
+     */
+    /* and the PerformMove function */
+    public static void FindBestMove(int player, char[][] board, char[] bestmove) {
+
+        BoardState state = new BoardState(); // , nextstate;
+        setupBoardState(state, player, board);
+
+        MCTSThread backgroundthread = new MCTSThread(state);
+        backgroundthread.start();
+        try {
+            backgroundthread.join((long) (PlayerHelper.SecPerMove * 1000 - 200));
+        } catch (InterruptedException e) {
+            System.err.println("test");
+        }
+        backgroundthread.stop = true;
+        try {
+            backgroundthread.join();
+        } catch (InterruptedException e) {
+        }
+        ;
+
+        int myBestMoveIndex = backgroundthread.selectedBestmoveIndex;
+
+        PlayerHelper.memcpy(bestmove, state.movelist[myBestMoveIndex],
+                PlayerHelper.MoveLength(state.movelist[myBestMoveIndex]));
+    }
+
+    public static int RunPlayoutOnState(BoardState state, int num_turns, int depth) {
+        if (state.numLegalMoves == 0) {
+            // Lost the game - no more valid moves.
+            return -1;
+        }
+
+        if (num_turns-- == 0) {
+            // Draw
+            return 0;
+        }
+
+        int myBestMoveIndex = 0;
+        double bestscore = -Double.MAX_VALUE;
+        // TODO: shuffle
+        // TODO: Do something with movelength.
+        for (int i = 1; i < state.numLegalMoves; i++) {
+            BoardState newstate = new BoardState(state);
+            PerformMove(newstate, i);
+
+            double score = min(newstate, depth, -Double.MAX_VALUE, Double.MAX_VALUE);
+            if (score > bestscore) {
+                myBestMoveIndex = i;
+                bestscore = score;
+            }
+        }
+
+        // Make the move on the state, and recurse.
+        BoardState nextState = new BoardState(state);
+        PerformMove(nextState, myBestMoveIndex);
+
+        return -1 * RunPlayoutOnState(nextState, num_turns, depth);
+    }
+
+    static void printBoard(BoardState state) {
+        int y, x;
+
+        for (y = 0; y < 8; y++) {
+            for (x = 0; x < 8; x++) {
+                if (x % 2 != y % 2) {
+                    if (PlayerHelper.empty(state.board[y][x])) {
+                        System.err.print(" ");
+                    } else if (PlayerHelper.king(state.board[y][x])) {
+                        if (PlayerHelper.color(state.board[y][x]) == 2)
+                            System.err.print("B");
+                        else
+                            System.err.print("A");
+                    } else if (PlayerHelper.piece(state.board[y][x])) {
+                        if (PlayerHelper.color(state.board[y][x]) == 2)
+                            System.err.print("b");
+                        else
+                            System.err.print("a");
+                    }
+                } else {
+                    System.err.print("@");
+                }
+            }
+            System.err.print("\n");
+        }
+    }
+
+    static double evalBoard(BoardState state) {
+        int y, x;
+        double score;
+        score = 0.0;
+
+        for (y = 0; y < 8; y++) {
+            for (x = 0; x < 8; x++) {
+                if (x % 2 != y % 2 && !PlayerHelper.empty(state.board[y][x])) {
+                    char piece = state.board[y][x];
+                    if (PlayerHelper.color(piece) == 1) {
+                        if (PlayerHelper.king(piece)) {
+                            score -= 2;
+                        }
+
+                        if (PlayerHelper.piece(piece)) {
+                            score -= 1;
+                        }
+                    } else {
+                        if (PlayerHelper.king(piece)) {
+                            score += 2;
+                        }
+
+                        if (PlayerHelper.piece(piece)) {
+                            score += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (state.player == 1)
+            score = -score;
+
+        return score;
+    }
+}
