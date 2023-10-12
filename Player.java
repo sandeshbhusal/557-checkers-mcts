@@ -78,8 +78,11 @@ public class Player {
         public int playout(BoardState state, int maxDepth, int maxMoves) {
             int myBestMoveIndex = 0;
             // double bestMoveValue = -Double.MAX_VALUE;
-            if (state.numLegalMoves == 0)
+            if (state.numLegalMoves == 0){
+                System.err.printf("Lost game for %d \n", state.player);
+                printBoard(state);
                 return -1;
+            }
             if (maxMoves == 0)
                 return 0;
 
@@ -96,7 +99,9 @@ public class Player {
                 PerformMove(nextState, i);
 
                 Node newnode = new Node(nextState, curr);
-                int temp = playout(nextState, 3, 50) > 0 ? 1 : 0;
+                System.err.println("Playing as " + nextState.player);
+                int temp = playout(nextState, 3, 50);
+                System.err.println("Got score for playout:" + temp);
 
                 if (temp > 0)
                     newnode.won += 1.0;
@@ -195,9 +200,9 @@ public class Player {
             double bestUtility = (root.branches[0].played);
             int myBestMoveIndex = 0;
             for (int i = 1; i < root.branches.length; i++) {
-                Node branch = root.branches[0];
-                double tempUtility = (branch.played - branch.won) / branch.played;
-                if (tempUtility < bestUtility) {
+                Node branch = root.branches[i];
+                double tempUtility = branch.played;
+                if (tempUtility > bestUtility) {
                     bestUtility = tempUtility;
                     myBestMoveIndex = i;
                 }
@@ -208,31 +213,31 @@ public class Player {
                     PlayerHelper.MoveLength(state.movelist[myBestMoveIndex]));
         }
 
-        // static void printBoard(BoardState state) {
-        // int y, x;
+        static void printBoard(BoardState state) {
+            int y, x;
 
-        // for (y = 0; y < 8; y++) {
-        // for (x = 0; x < 8; x++) {
-        // if (x % 2 != y % 2) {
-        // if (PlayerHelper.empty(state.board[y][x])) {
-        // System.err.print(" ");
-        // } else if (PlayerHelper.king(state.board[y][x])) {
-        // if (PlayerHelper.color(state.board[y][x]) == 2)
-        // System.err.print("B");
-        // else
-        // System.err.print("A");
-        // } else if (PlayerHelper.piece(state.board[y][x])) {
-        // if (PlayerHelper.color(state.board[y][x]) == 2)
-        // System.err.print("b");
-        // else
-        // System.err.print("a");
-        // }
-        // } else {
-        // System.err.print("@");
-        // }
-        // }
-        // System.err.print("\n");
-        // }
-        // }
+            for (y = 0; y < 8; y++) {
+                for (x = 0; x < 8; x++) {
+                    if (x % 2 != y % 2) {
+                        if (PlayerHelper.empty(state.board[y][x])) {
+                            System.err.print(" ");
+                        } else if (PlayerHelper.king(state.board[y][x])) {
+                            if (PlayerHelper.color(state.board[y][x]) == 2)
+                                System.err.print("B");
+                            else
+                                System.err.print("A");
+                        } else if (PlayerHelper.piece(state.board[y][x])) {
+                            if (PlayerHelper.color(state.board[y][x]) == 2)
+                                System.err.print("b");
+                            else
+                                System.err.print("a");
+                        }
+                    } else {
+                        System.err.print("@");
+                    }
+                }
+                System.err.print("\n");
+            }
+        }
     }
 }
