@@ -77,16 +77,13 @@ public class Player {
 
         public int playout(BoardState state, int maxDepth, int maxMoves) {
             int myBestMoveIndex = 0;
-            // double bestMoveValue = -Double.MAX_VALUE;
             if (state.numLegalMoves == 0){
-                System.err.printf("Lost game for %d \n", state.player);
-                printBoard(state);
                 return -1;
             }
             if (maxMoves == 0)
                 return 0;
 
-            myBestMoveIndex = Math.abs(random.nextInt()) % state.numLegalMoves;
+            myBestMoveIndex = random.nextInt(state.numLegalMoves);
 
             BoardState nextstate = new BoardState(state);
             PerformMove(nextstate, myBestMoveIndex);
@@ -99,12 +96,12 @@ public class Player {
                 PerformMove(nextState, i);
 
                 Node newnode = new Node(nextState, curr);
-                System.err.println("Playing as " + nextState.player);
+                // System.err.println("Playing as " + nextState.player);
                 int temp = playout(nextState, 3, 50);
-                System.err.println("Got score for playout:" + temp);
+                // System.err.println("Got score for playout:" + temp);
 
                 if (temp > 0)
-                    newnode.won += 1.0;
+                    newnode.won = 1.0;
                 else
                     newnode.won = 0;
 
@@ -131,9 +128,7 @@ public class Player {
         }
 
         public double utility(Node curr, Node parent) {
-            if (curr.played < 1.0)
-                return 100;
-            return (((double) curr.won) / curr.played) + 1.4 * Math.sqrt(Math.log(parent.played) / curr.played);
+            return ((double) (curr.played - curr.won) / curr.played) + 1.4 * Math.sqrt(Math.log(parent.played) / curr.played);
         }
 
         public void select(Node curr) {
@@ -178,30 +173,32 @@ public class Player {
 
             // System.err.println("Select ends here");
             // Dump all node scores.
-            Stack<Node> nodes = new Stack<>();
-            nodes.push(root);
-            while (nodes.size() > 0) {
-                Node popped_node = nodes.pop();
-                if (popped_node == null)
-                    continue;
-                for (int i = 0; i < popped_node.depth; i++)
-                    System.err.print(" ");
+            // Stack<Node> nodes = new Stack<>();
+            // nodes.push(root);
+            // while (nodes.size() > 0) {
+            //     Node popped_node = nodes.pop();
+            //     if (popped_node == null)
+            //         continue;
+            //     for (int i = 0; i < popped_node.depth; i++)
+            //         System.err.print(" ");
 
-                System.err.printf("Nodevalues: (%f/%f).\n", popped_node.won,
-                        popped_node.played);
-                for (Node childnode : popped_node.branches)
-                    nodes.push(childnode);
-            }
+            //     System.err.printf("Nodevalues: (%f/%f).\n", popped_node.won,
+            //             popped_node.played);
+            //     for (Node childnode : popped_node.branches)
+            //         nodes.push(childnode);
+            // }
             // end of dump.
             System.err.println("Total playouts throughout the entire game: " + playouts);
 
             // We are taking the most-played branch only.
             // Ref: https://www.youtube.com/watch?v=Fbs4lnGLS8M
-            double bestUtility = (root.branches[0].played);
+            // double bestUtility = (root.branches[0].won - root.branches[0].played) / root.branches[0].played;
+            double bestUtility = root.branches[0].played;
             int myBestMoveIndex = 0;
-            for (int i = 1; i < root.branches.length; i++) {
+            for (int i = 0; i < root.branches.length; i++) {
                 Node branch = root.branches[i];
                 double tempUtility = branch.played;
+                System.err.printf("Branch %d has won %f and played %f with utility %f\n", i, branch.won, branch.played, tempUtility);
                 if (tempUtility > bestUtility) {
                     bestUtility = tempUtility;
                     myBestMoveIndex = i;
