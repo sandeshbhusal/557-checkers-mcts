@@ -108,8 +108,8 @@ void FindBestMove(int player, char board[8][8], char* bestmove)
         State nextState;
         memcpy(&nextState,&state,sizeof(State));
         performMove(&nextState,i);
-        printBoard(&nextState);
-        fprintf(stderr,"Eval of board: %f\n",evalBoard(&nextState));
+        // printBoard(&nextState);
+        // fprintf(stderr,"Eval of board: %f\n",evalBoard(&nextState));
     }
 
     // For now, until you write your search routine, we will just set the best move
