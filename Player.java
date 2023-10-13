@@ -47,6 +47,18 @@ public class Player {
         PlayerHelper.FindLegalMoves(state);
     }
 
+    static void shuffle(Object[] arr, int maxi)
+    {
+        int i,j;
+        for(i=0;i<maxi;i++)
+        {
+            j=random.nextInt(maxi);
+            Object temp = arr[i];
+            arr[i]=arr[j];
+            arr[j]=temp;
+        }
+    }
+    
     public static void FindBestMove(int p, char[][] b, char[] bm) {
         MCTSThread fbmt = new MCTSThread(p, b, bm);
         fbmt.start();
@@ -148,7 +160,7 @@ public class Player {
                 expand(curr);
                 return;
             }
-
+            shuffle(curr.state.movelist, curr.state.numLegalMoves);
             double bestUtility = utility(curr.branches[0], curr);
             Node selected = curr.branches[0];
             for (int i = 1; i < curr.branches.length; i++) {
